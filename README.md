@@ -21,12 +21,13 @@
 
   -dev              development (default is production)
   -debug            open verbose output for debugging
-  -payload          message (json according to APNs protocol)
+  -payload          '<payload>' (a json object according to APNs protocol)
+                    example: '{"aps":{"alert":"payload test.","sound":"default"}}'
   
   if your want to specify any:
   
   -uri              default: api.[development.]push.apple.com
   -port             default: 2197
-  -prefix           /3/device/
-  -pkey             specify private-key
+  -prefix           default: /3/device/
+  -pkey             specify a private-key (,default in cert.pem)
 ```

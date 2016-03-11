@@ -602,8 +602,8 @@ submit_request(struct connection_t *conn, const struct opt_t* opt)
     const nghttp2_nv nva[] = {
 	      MAKE_NV(":method", "POST"),
 	      MAKE_NV_CS(":path", opt->path),
-	      MAKE_NV_CS("apns-topic", opt->topic),
-	      MAKE_NV("apns-id", "e77a3d12-bc9f-f410-a127-43f212597a9c")
+	      MAKE_NV_CS("apns-topic", opt->topic)
+	     // MAKE_NV("apns-id", "e77a3d12-bc9f-f410-a127-43f212597a9c")
     };
 
     nghttp2_data_provider data_prd;
