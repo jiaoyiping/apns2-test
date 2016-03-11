@@ -12,6 +12,7 @@ apns2-test: apns2-test.c $(LIB)/libnghttp2.a
 	$(CC) -o apns2-test apns2-test.c $(CFLAGS) $(LDFLAGS)
 		
 $(LIB)/libnghttp2.a:
+	git submodule update --init
 	cd deps/nghttp2 && \
 	autoreconf -i && \
 	automake && autoconf && \
