@@ -19,7 +19,6 @@
 
 #include <nghttp2/nghttp2.h>
 
-
 enum {
     IO_NONE,
     WANT_READ,
@@ -65,6 +64,11 @@ struct loop_t {
     int epfd;
 };
 
+static int g_debug_flag = 0;
+
+#define debug  if(g_debug_flag) printf
+
+
 static void
 die(const char *msg)
 {
@@ -82,27 +86,7 @@ diec(const char *msg,int i)
 static bool
 file_exsit(const char *f)
 {
-    return 0 == access(f, 0) ? true : (printf("file not exsit:%s\n",f),false);
-}
-
-static bool
-option_is_test(int argc, const char *arg1)
-{
-    if (argc == 2 && 0 == strcmp(arg1, "test")) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-static bool
-option_is_regular(int argc, const char *token, const char *cert, const char *msg)
-{
-    if (argc == 4 && file_exsit(cert) && (msg!=NULL)) {
-        return true;
-    } else {
-        return false;
-    }
+    return 0 == access(f, 0) ? true : (fprintf(stderr,"file not exsit: %s\n",f),false);
 }
 
 struct uri_t
@@ -143,7 +127,7 @@ connect_to_url(const char *url, uint16_t port)
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    printf("ns looking up ...\n");
+    debug("ns looking up ...\n");
     rv = getaddrinfo(url, port_str, &hints, &res);
     if (rv != 0) {
         freeaddrinfo(res);
@@ -181,7 +165,7 @@ socket_connect(const struct uri_t *uri, struct connection_t *conn)
     fd = connect_to_url(uri->url,uri->port);
     if (fd > 0) {
         conn->fd = fd;
-        printf("socket connect ok: fd=%d, host: %s:%d\n", conn->fd, uri->url, uri->port);
+        debug("socket connect ok: fd=%d, host: %s:%d\n", conn->fd, uri->url, uri->port);
         return true;
     }
     die("socket connect fail.");
@@ -199,6 +183,19 @@ read_x509_certificate(const char* path)
     x509 = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL);
     BIO_free(bio);
     return x509;
+}
+
+static char*
+get_topic (const char* path)
+{
+  char *p;
+  X509 *x509 = NULL;
+
+  if (NULL == (x509 = read_x509_certificate(path))) {
+      die("read_x509_certificate ");
+  }
+
+  return p;
 }
 
 /*
@@ -293,27 +290,26 @@ ssl_handshake(SSL *ssl, int fd)
     rv = SSL_do_handshake(ssl);
 
     if(rv==1) {
-            printf("Connected with encryption: %s\n", SSL_get_cipher(ssl));
+            debug("Connected with encryption: %s\n", SSL_get_cipher(ssl));
     }
     if (rv <= 0) {
-	printf("rv = %d\n",rv);
+	debug("rv = %d\n",rv);
 	unsigned long ssl_err = SSL_get_error(ssl,rv);
 	int geterror = ERR_peek_error();
 	int reason = ERR_GET_REASON(geterror);
-	printf("rv %d, ssl_error %lu, get_err %d, reason %d \n",rv, ssl_err, geterror ,reason);
-	printf("errmsg: %s\n", ERR_error_string(ERR_get_error(), NULL));
-	        printf("errmsg msg: %s\n", ERR_reason_error_string(ERR_peek_error()));
-	        printf("Error: %s\n", ERR_reason_error_string(ERR_get_error()));
+	debug("rv %d, ssl_error %lu, get_err %d, reason %d \n",rv, ssl_err, geterror ,reason);
+	debug("errmsg: %s\n", ERR_error_string(ERR_get_error(), NULL));
+	debug("errmsg msg: %s\n", ERR_reason_error_string(ERR_peek_error()));
+	debug("Error: %s\n", ERR_reason_error_string(ERR_get_error()));
 	    switch(reason)
 	    {
 	        case SSL_R_SSLV3_ALERT_CERTIFICATE_EXPIRED: /*,define in <openssl/ssl.h> "sslv3 alert certificate expired"},*/
 	          reason = X509_V_ERR_CERT_HAS_EXPIRED;
-	            printf("1\n");
+	            printf("X509_V_ERR_CERT_HAS_EXPIRED\n");
 	            break;
 	        case SSL_R_SSLV3_ALERT_CERTIFICATE_REVOKED: /*,"sslv3 alert certificate revoked"},*/
 	          reason = X509_V_ERR_CERT_REVOKED;
-	            printf("1\n");
-
+	            printf("X509_V_ERR_CERT_REVOKED\n");
 	            break;
 	    }
 
@@ -327,7 +323,7 @@ static bool
 ssl_connect(const struct uri_t *uri, struct connection_t *conn)
 {
     if (ssl_allocate(conn,uri->cert)) {
-        fprintf(stdout, "ssl allocation ok\n");
+        debug("ssl allocation ok\n");
     } else {
         fprintf(stderr, "ssl allocation error\n");
         return false;
@@ -335,7 +331,7 @@ ssl_connect(const struct uri_t *uri, struct connection_t *conn)
 
     fprintf(stderr, "ssl handshaking ...\n");
     if (ssl_handshake(conn->ssl, conn->fd)) {
-        fprintf(stderr, "ssl handshake ok\n");
+	debug("ssl handshake ok\n");
     } else {
         fprintf(stderr, "ssl handshake error\n");
         return false;
@@ -411,20 +407,20 @@ static int on_frame_send_callback(nghttp2_session *session,
   case NGHTTP2_HEADERS:
     if (nghttp2_session_get_stream_user_data(session, frame->hd.stream_id)) {
       const nghttp2_nv *nva = frame->headers.nva;
-      printf("[INFO] C ----------------------------> S (HEADERS)\n");
+      debug("[INFO] C ----------------------------> S (HEADERS)\n");
       for (i = 0; i < frame->headers.nvlen; ++i) {
         fwrite(nva[i].name, nva[i].namelen, 1, stdout);
-        printf(": ");
+        debug(": ");
         fwrite(nva[i].value, nva[i].valuelen, 1, stdout);
-        printf("\n");
+        debug("\n");
       }
     }
     break;
   case NGHTTP2_RST_STREAM:
-    printf("[INFO] C ----------------------------> S (RST_STREAM)\n");
+    debug("[INFO] C ----------------------------> S (RST_STREAM)\n");
     break;
   case NGHTTP2_GOAWAY:
-    printf("[INFO] C ----------------------------> S (GOAWAY)\n");
+    debug("[INFO] C ----------------------------> S (GOAWAY)\n");
     break;
   }
   return 0;
@@ -438,17 +434,17 @@ static int on_frame_recv_callback(nghttp2_session *session,
     if (frame->headers.cat == NGHTTP2_HCAT_RESPONSE) {
       struct connection_t *conn = nghttp2_session_get_stream_user_data(session, frame->hd.stream_id);
       if (conn) {
-        printf("[INFO] C <---------------------------- S (HEADERS end)\n");
+	  debug("[INFO] C <---------------------------- S (HEADERS end)\n");
       }
     } else {
-	printf("other header: %d",frame->headers.cat);
+	debug("other header: %d",frame->headers.cat);
     }
     break;
   case NGHTTP2_RST_STREAM:
-    printf("[INFO] C <---------------------------- S (RST_STREAM)\n");
+    debug("[INFO] C <---------------------------- S (RST_STREAM)\n");
     break;
   case NGHTTP2_GOAWAY:
-    printf("[INFO] C <---------------------------- S (GOAWAY)\n");
+    debug("[INFO] C <---------------------------- S (GOAWAY)\n");
     break;
   }
   return 0;
@@ -473,7 +469,7 @@ static int on_header_callback(nghttp2_session *session,
 static int on_begin_headers_callback(nghttp2_session *session,
                                                  const nghttp2_frame *frame,
                                                  void *user_data) {
-  printf("[INFO] C <---------------------------- S (HEADERS begin)\n");
+  debug("[INFO] C <---------------------------- S (HEADERS begin)\n");
   return 0;
 }
 
@@ -506,7 +502,7 @@ static int on_data_chunk_recv_callback(nghttp2_session *session,
                                        uint8_t flags _U_, int32_t stream_id,
                                        const uint8_t *data, size_t len,
                                        void *user_data _U_) {
-  printf("%s\n",__FUNCTION__);
+  debug("%s\n",__FUNCTION__);
   char buf[1024] = {0};
   memcpy(buf,data,len);
   buf[len]=0;
@@ -723,20 +719,92 @@ connection_cleanup(struct connection_t *conn)
 void
 usage()
 {
-    printf("usage: apns2demo token cert message \n");
+    printf("usage: apns2-test -cert -token [-dev] [-topic ] [-payload ] [-pkey] \n");
+
+    printf("\nmy test device:\n./apns2-test --cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem --token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
+}
+
+struct opt_t {
+  char* uri;
+  uint16_t port;
+  char *token;
+  char *topic;
+  char *cert;
+  char *pkey;
+  char *prefix;
+  char *payload;
+};
+
+static bool
+string_eq(const char* a, const char *b)
+{
+  return (0 == strcmp(a,b)) ? true : false;
+}
+
+static char*
+alloc_string(const char* s)
+{
+  size_t n = strlen(s) +1;
+  char *m = malloc(n);
+  memcpy(m,s,n);
+  return m;
 }
 
 static void
-test()
+check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
 {
-  // bad path
+  bzero(opt,sizeof(*opt));
 
-  // invalid token
+  opt->uri      = alloc_string("api.push.apple.com");
+  opt->port     = 2197;
+  opt->token    = NULL;
+  opt->topic    = NULL;
+  opt->cert     = NULL;
+  opt->pkey     = NULL;
+  opt->prefix   = alloc_string("/3/device/");
+  opt->payload  = alloc_string("{\"aps\":{\"alert\":\"nghttp2 test.\",\"sound\":\"default\"}}");
 
-  // feedback
+  int i=0;
+  for (i=0;i<argc;i++) {
+      printf("%d %s\n",i,argv[i]);
+      const char *s = argv[i];
+      const char *next_arg = argv[i+1];
 
-  //
+      if (string_eq(s,"-debug")) {
+	  g_debug_flag = 1;
+      } else if (string_eq(s,"-dev")) {
+	  opt->uri      = alloc_string("api.development.push.apple.com");
+      } else if (string_eq(s,"-uri")) {
+	  opt->uri      = alloc_string(next_arg);
+      } else if (string_eq(s,"-port")) {
+	  opt->port = (uint16_t)atoi(next_arg);
+      } else if (string_eq(s,"-token")) {
+	  opt->token    = alloc_string(next_arg);
+      } else if (string_eq(s,"-topic")) {
+	  opt->topic    = alloc_string(next_arg);
+      } else if (string_eq(s,"-cert")) {
+	  opt->cert     = alloc_string(next_arg);
+	  if (!file_exsit(opt->cert)) exit(0);
+      } else if (string_eq(s,"-pkey")) {
+	  opt->pkey     = alloc_string(next_arg);
+      } else if (string_eq(s,"-prefix")) {
+	  opt->prefix   = alloc_string(next_arg);
+      } else if (string_eq(s,"-payload")) {
+	  opt->payload  = alloc_string(next_arg);
+      } else {
+	  usage();
+	  exit(0);
+      }
+  }
 
+  if (opt->cert == NULL ||
+      opt->token == NULL) {
+      usage();
+      exit(0);
+  }
+  if (opt->topic == NULL) {
+      opt->topic = get_topic(opt->cert);
+  }
 }
 
 int
@@ -747,6 +815,11 @@ main(int argc, const char *argv[])
     struct loop_t loop;
     const char *msg;
 
+    struct opt_t opt;
+
+    check_and_make_opt(argc, argv, &opt);
+
+#if 0
     if (argc == 1) {
         /* default: my test device info */
         uri = make_uri("api.push.apple.com", 2197, "/3/device/",
@@ -766,10 +839,10 @@ main(int argc, const char *argv[])
         usage();
         exit(0);
     }
+#endif
 
-
-    printf("nghttp2 version: %s\n", NGHTTP2_VERSION);
-    printf("tls/ssl version: %s\n", SSL_TXT_TLSV1_2);
+    debug("nghttp2 version: %s\n", NGHTTP2_VERSION);
+    debug("tls/ssl version: %s\n", SSL_TXT_TLSV1_2);
 
     init_global_library();
 
