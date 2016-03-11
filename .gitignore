@@ -34,3 +34,4 @@
 apns2-test
 .cproject
 .project
+*.pem

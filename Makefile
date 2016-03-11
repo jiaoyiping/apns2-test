@@ -3,8 +3,8 @@
 CC=gcc
 INC=-I./deps/nghttp2/lib/includes
 LIB=./deps/nghttp2/lib/.libs
-CFLAGS=-Wall -Wextra -std=c99 $(INC)
-LDFLAGS=-static -lnghttp2 -lssl -lcrypto
+CFLAGS=-Wall -Wextra -Wno-unused-parameter $(INC)
+LDFLAGS=-Wl,-Bstatic -lnghttp2 -Wl,-Bdynamic -lssl -lcrypto
 
 all: apns2-test
 
