@@ -19,6 +19,8 @@
 
 #include <nghttp2/nghttp2.h>
 
+#define APNS2_TEST_VERSION "0.0.1"
+
 enum {
     IO_NONE,
     WANT_READ,
@@ -45,19 +47,16 @@ struct connection_t {
     int want_io;
 };
 
-struct uri_t {
-    const char *url;
-    const char *prefix;
-    const char *token;
-    uint16_t port;
-    const char *cert;
-    char *path;
-};
-
-struct request_t {
-    struct uri_t uri;
-    uint8_t *data;
-    size_t data_len;
+struct opt_t {
+  char* uri;
+  uint16_t port;
+  char *token;
+  char *topic;
+  char *cert;
+  char *pkey;
+  char *prefix;
+  char *payload;
+  char *path;
 };
 
 struct loop_t {
@@ -89,21 +88,14 @@ file_exsit(const char *f)
     return 0 == access(f, 0) ? true : (fprintf(stderr,"file not exsit: %s\n",f),false);
 }
 
-struct uri_t
-make_uri(const char *url, uint16_t port, const char *prefix, const char *token ,const char *cert)
+static char*
+make_path(const char *prefix, const char *token)
 {
-    struct uri_t uri;
-    uri.url = url;
-    uri.port = port;
-    uri.prefix = prefix;
-    uri.token = token;
-    uri.cert = cert;
-
-    uri.path = malloc(strlen(prefix)+strlen(token)+1);
-    memset(uri.path,0,strlen(prefix)+strlen(token)+1);
-    strcat(uri.path,prefix);
-    strcat(uri.path,token);
-    return uri;
+    char *path = malloc(strlen(prefix)+strlen(token)+1);
+    memset(path,0,strlen(prefix)+strlen(token)+1);
+    strcat(path,prefix);
+    strcat(path,token);
+    return path;
 }
 
 static void
@@ -142,7 +134,7 @@ connect_to_url(const char *url, uint16_t port)
         }
         struct in_addr a = ((struct sockaddr_in*)res->ai_addr)->sin_addr;
         const char *p = inet_ntoa(a);
-        printf("connecting to : %s\n",p);
+        debug("connecting to : %s\n",p);
         while ((rv = connect(sockfd, res->ai_addr, res->ai_addrlen)) == -1 &&
                 errno == EINTR)
             ;
@@ -159,13 +151,13 @@ connect_to_url(const char *url, uint16_t port)
 }
 
 static bool
-socket_connect(const struct uri_t *uri, struct connection_t *conn)
+socket_connect(const char *url, uint16_t port, struct connection_t *conn)
 {
     int fd;
-    fd = connect_to_url(uri->url,uri->port);
+    fd = connect_to_url(url,port);
     if (fd > 0) {
         conn->fd = fd;
-        debug("socket connect ok: fd=%d, host: %s:%d\n", conn->fd, uri->url, uri->port);
+        debug("socket connect ok: fd=%d, host: %s:%d\n", conn->fd, url, port);
         return true;
     }
     die("socket connect fail.");
@@ -188,9 +180,9 @@ read_x509_certificate(const char* path)
 static char*
 get_topic (const char* path)
 {
-  char *p;
+  char *p = NULL;
   X509 *x509 = NULL;
-
+  die("get topic not done ");
   if (NULL == (x509 = read_x509_certificate(path))) {
       die("read_x509_certificate ");
   }
@@ -230,7 +222,7 @@ init_ssl_ctx(SSL_CTX *ssl_ctx)
 }
 
 static bool
-ssl_allocate(struct connection_t *conn, const char *cert)
+ssl_allocate(struct connection_t *conn, const char *cert, const char *pkey)
 {
     int rv;
     X509 *x509 = NULL;
@@ -320,16 +312,16 @@ ssl_handshake(SSL *ssl, int fd)
 }
 
 static bool
-ssl_connect(const struct uri_t *uri, struct connection_t *conn)
+ssl_connect(const char *cert, const char *pkey, struct connection_t *conn)
 {
-    if (ssl_allocate(conn,uri->cert)) {
+    if (ssl_allocate(conn, cert, pkey)) {
         debug("ssl allocation ok\n");
     } else {
         fprintf(stderr, "ssl allocation error\n");
         return false;
     }
 
-    fprintf(stderr, "ssl handshaking ...\n");
+    debug("ssl handshaking ...\n");
     if (ssl_handshake(conn->ssl, conn->fd)) {
 	debug("ssl handshake ok\n");
     } else {
@@ -410,9 +402,9 @@ static int on_frame_send_callback(nghttp2_session *session,
       debug("[INFO] C ----------------------------> S (HEADERS)\n");
       for (i = 0; i < frame->headers.nvlen; ++i) {
         fwrite(nva[i].name, nva[i].namelen, 1, stdout);
-        debug(": ");
+        printf(": ");
         fwrite(nva[i].value, nva[i].valuelen, 1, stdout);
-        debug("\n");
+        printf("\n");
       }
     }
     break;
@@ -469,6 +461,7 @@ static int on_header_callback(nghttp2_session *session,
 static int on_begin_headers_callback(nghttp2_session *session,
                                                  const nghttp2_frame *frame,
                                                  void *user_data) {
+  printf("\n");
   debug("[INFO] C <---------------------------- S (HEADERS begin)\n");
   return 0;
 }
@@ -554,17 +547,6 @@ set_nghttp2_session_info(struct connection_t *conn)
     return true;
 }
 
-static struct request_t
-make_request(struct uri_t uri, const char *msg)
-{
-    struct request_t req;
-    req.uri = uri;
-    req.data_len = strlen(msg);
-    req.data = malloc(req.data_len);
-    memcpy(req.data, msg, req.data_len);
-    return req;
-}
-
 static int
 set_nonblocking(int fd)
 {
@@ -595,31 +577,37 @@ set_tcp_nodelay(int fd)
 ssize_t data_prd_read_callback(
     nghttp2_session *session, int32_t stream_id, uint8_t *buf, size_t length,
     uint32_t *data_flags, nghttp2_data_source *source, void *user_data) {
-  struct request_t *req = source->ptr;
-  memcpy(buf,req->data,req->data_len);
+
+  const char *d = source->ptr;
+  size_t len = strlen(d);
+
+  memcpy(buf,d,len);
   *data_flags |= NGHTTP2_DATA_FLAG_EOF;
 
-  printf("[INFO] C ----------------------------> S (DATA post body)\n");
-  char payload[1024];
-  memcpy(payload,req->data,req->data_len);
-  payload[req->data_len]=0;
+  debug("[INFO] C ----------------------------> S (DATA post body)\n");
+  char payload[4096];
+  memcpy(payload,d,len);
+  payload[len]=0;
   printf("%s\n",payload);
-  return req->data_len;
+  return strlen(d);
 }
 
 static int32_t
-submit_request(struct connection_t *conn, const struct request_t* req)
+submit_request(struct connection_t *conn, const struct opt_t* opt)
 {
     int32_t stream_id;
+
+
+
     const nghttp2_nv nva[] = {
 	      MAKE_NV(":method", "POST"),
-	      MAKE_NV_CS(":path", req->uri.path),
-	      MAKE_NV("apns-topic", "jpush.wangwei.test"),
+	      MAKE_NV_CS(":path", opt->path),
+	      MAKE_NV_CS("apns-topic", opt->topic),
 	      MAKE_NV("apns-id", "e77a3d12-bc9f-f410-a127-43f212597a9c")
     };
 
     nghttp2_data_provider data_prd;
-    data_prd.source.ptr = (void*)req;
+    data_prd.source.ptr = (void*)opt->payload;
     data_prd.read_callback = data_prd_read_callback;
 
     stream_id = nghttp2_submit_request(conn->session, NULL, nva,
@@ -678,26 +666,26 @@ event_loop(struct loop_t *loop, struct connection_t *conn)
 }
 
 static bool
-blocking_post(struct loop_t *loop, struct connection_t *conn, const struct request_t *req)
+blocking_post(struct loop_t *loop, struct connection_t *conn, const struct opt_t *opt)
 {
     set_nonblocking(conn->fd);
     set_tcp_nodelay(conn->fd);
 
     int32_t stream_id;
-    stream_id = submit_request(conn, req);
+    stream_id = submit_request(conn, opt);
     if (stream_id < 0) {
 	printf("stream id error: %d\n",stream_id);
 	return false;
     }
 
-    printf("[INFO] Stream ID = %d\n", stream_id);
+    debug("[INFO] Stream ID = %d\n", stream_id);
 
     /* maybe running in a thread */
     event_loop(loop,conn);
 
     close(loop->epfd);
     loop->epfd = -1;
-    printf("over.\n");
+    debug("over.\n");
     return true;
 }
 
@@ -719,21 +707,9 @@ connection_cleanup(struct connection_t *conn)
 void
 usage()
 {
-    printf("usage: apns2-test -cert -token [-dev] [-topic ] [-payload ] [-pkey] \n");
-
-    printf("\nmy test device:\n./apns2-test --cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem --token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
+    printf("usage: apns2-test -cert -topic -token [-dev] [-payload|uri|port|pkey|prefix] [-debug]\n");
+    printf("\nmy test device:\n./apns2-test -cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem -topic jpush.wangwei.test -token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
 }
-
-struct opt_t {
-  char* uri;
-  uint16_t port;
-  char *token;
-  char *topic;
-  char *cert;
-  char *pkey;
-  char *prefix;
-  char *payload;
-};
 
 static bool
 string_eq(const char* a, const char *b)
@@ -766,7 +742,7 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
 
   int i=0;
   for (i=0;i<argc;i++) {
-      printf("%d %s\n",i,argv[i]);
+      debug("%d %s\n",i,argv[i]);
       const char *s = argv[i];
       const char *next_arg = argv[i+1];
 
@@ -774,7 +750,7 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
 	  g_debug_flag = 1;
       } else if (string_eq(s,"-dev")) {
 	  opt->uri      = alloc_string("api.development.push.apple.com");
-      } else if (string_eq(s,"-uri")) {
+      } else if (string_eq(s,"-url")) {
 	  opt->uri      = alloc_string(next_arg);
       } else if (string_eq(s,"-port")) {
 	  opt->port = (uint16_t)atoi(next_arg);
@@ -791,9 +767,6 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
 	  opt->prefix   = alloc_string(next_arg);
       } else if (string_eq(s,"-payload")) {
 	  opt->payload  = alloc_string(next_arg);
-      } else {
-	  usage();
-	  exit(0);
       }
   }
 
@@ -805,16 +778,15 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
   if (opt->topic == NULL) {
       opt->topic = get_topic(opt->cert);
   }
+  opt->path = make_path(opt->prefix, opt->token);
+  printf("\n");
 }
 
 int
 main(int argc, const char *argv[])
 {
     struct connection_t conn;
-    struct uri_t uri;
     struct loop_t loop;
-    const char *msg;
-
     struct opt_t opt;
 
     check_and_make_opt(argc, argv, &opt);
@@ -841,18 +813,18 @@ main(int argc, const char *argv[])
     }
 #endif
 
+    debug("apns2-test version: %s\n", APNS2_TEST_VERSION);
     debug("nghttp2 version: %s\n", NGHTTP2_VERSION);
     debug("tls/ssl version: %s\n", SSL_TXT_TLSV1_2);
 
     init_global_library();
 
-    socket_connect(&uri, &conn);
-    if(!ssl_connect(&uri, &conn))
+    socket_connect(opt.uri, opt.port, &conn);
+    if(!ssl_connect(opt.cert, opt.pkey, &conn))
       die("ssl connect fail.");
     set_nghttp2_session_info(&conn);
 
-    struct request_t req = make_request(uri,msg);
-    blocking_post(&loop, &conn, &req);
+    blocking_post(&loop, &conn, &opt);
 
     connection_cleanup(&conn);
 
