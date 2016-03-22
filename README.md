@@ -21,6 +21,8 @@
 
   -dev              development (default is production)
   -debug            open verbose output for debugging
+  -message          specified as value of key "alert" in payload
+                    example: -message "abc test."
   -payload          '<payload>' (a json object according to APNs protocol)
                     example: '{"aps":{"alert":"payload test.","sound":"default"}}'
   
