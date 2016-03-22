@@ -56,6 +56,7 @@ struct opt_t {
   char *pkey;
   char *prefix;
   char *payload;
+  char *message;
   char *path;
 };
 
@@ -707,7 +708,7 @@ connection_cleanup(struct connection_t *conn)
 void
 usage()
 {
-    printf("usage: apns2-test -cert -topic -token [-dev] [-payload|uri|port|pkey|prefix] [-debug]\n");
+    printf("usage: apns2-test -cert -topic -token [-dev] [-message|-payload|uri|port|pkey|prefix] [-debug]\n");
     printf("\nmy test device:\n./apns2-test -cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem -topic jpush.wangwei.test -token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
 }
 
@@ -738,6 +739,7 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
   opt->cert     = NULL;
   opt->pkey     = NULL;
   opt->prefix   = alloc_string("/3/device/");
+  opt->message  = alloc_string("{\"aps\":{\"alert\":\"%s\",\"sound\":\"default\"}}");
   opt->payload  = alloc_string("{\"aps\":{\"alert\":\"nghttp2 test.\",\"sound\":\"default\"}}");
 
   int i=0;
@@ -765,7 +767,11 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
 	  opt->pkey     = alloc_string(next_arg);
       } else if (string_eq(s,"-prefix")) {
 	  opt->prefix   = alloc_string(next_arg);
-      } else if (string_eq(s,"-payload")) {
+      } else if (string_eq(s,"-message")) {
+	  char buf[4096] = {0};
+	  snprintf(buf,4096,opt->message,next_arg);
+	  opt->payload  = alloc_string(buf);
+      }else if (string_eq(s,"-payload")) {
 	  opt->payload  = alloc_string(next_arg);
       }
   }
