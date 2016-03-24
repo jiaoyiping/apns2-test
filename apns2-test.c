@@ -188,9 +188,9 @@ get_topic (const char* path)
       die("read_x509_certificate fail.");
   }
 
-  const char* a =X509_get_notBefore(x509)->data;
-  const char* b =X509_get_notAfter(x509)->data;
-  debug("notBefore : %s\nnotAfter  : %s\n",a,b);
+  const char* nb = (char*)X509_get_notBefore(x509)->data;
+  const char* na = (char*)X509_get_notAfter(x509)->data;
+  debug("notBefore : %s\nnotAfter  : %s\n", nb, na);
 
   X509_NAME *xn = NULL;
   ASN1_STRING *d = NULL;
