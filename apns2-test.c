@@ -19,7 +19,7 @@
 
 #include <nghttp2/nghttp2.h>
 
-#define APNS2_TEST_VERSION "0.0.1"
+#define APNS2_TEST_VERSION "0.1.0"
 
 enum {
     IO_NONE,
@@ -68,6 +68,8 @@ static int g_debug_flag = 0;
 
 #define debug  if(g_debug_flag) printf
 
+static char*
+alloc_string(const char* s);
 
 static void
 die(const char *msg)
@@ -181,14 +183,31 @@ read_x509_certificate(const char* path)
 static char*
 get_topic (const char* path)
 {
-  char *p = NULL;
   X509 *x509 = NULL;
-  die("get topic not done ");
   if (NULL == (x509 = read_x509_certificate(path))) {
-      die("read_x509_certificate ");
+      die("read_x509_certificate fail.");
   }
 
-  return p;
+  const char* a =X509_get_notBefore(x509)->data;
+  const char* b =X509_get_notAfter(x509)->data;
+  debug("notBefore : %s\nnotAfter  : %s\n",a,b);
+
+  X509_NAME *xn = NULL;
+  ASN1_STRING *d = NULL;
+
+  int cnt = 0, pos = -1;
+  xn = X509_get_subject_name(x509);
+  cnt = X509_NAME_entry_count(xn);
+
+  pos = X509_NAME_get_index_by_NID(xn, NID_userId, -1);
+  if (pos >=0 && pos <= cnt) {
+      d = X509_NAME_ENTRY_get_data(X509_NAME_get_entry(xn, pos));
+      debug("%s = %s [%d]\n", SN_userId, d->data, d->length);
+      return alloc_string((char*)d->data);
+  }
+
+  die("get topic not done ");
+  return NULL;
 }
 
 /*
@@ -708,8 +727,8 @@ connection_cleanup(struct connection_t *conn)
 void
 usage()
 {
-    printf("usage: apns2-test -cert -topic -token [-dev] [-message|-payload|uri|port|pkey|prefix] [-debug]\n");
-    printf("\nmy test device:\n./apns2-test -cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem -topic jpush.wangwei.test -token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
+    printf("usage: apns2-test -cert -token [-dev] [-topic|-message|-payload|-uri|-port|-pkey|-prefix] [-debug]\n");
+    printf("\nExample:\n./apns2-test -cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem -token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
 }
 
 static bool
@@ -796,28 +815,6 @@ main(int argc, const char *argv[])
     struct opt_t opt;
 
     check_and_make_opt(argc, argv, &opt);
-
-#if 0
-    if (argc == 1) {
-        /* default: my test device info */
-        uri = make_uri("api.push.apple.com", 2197, "/3/device/",
-		       "73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956",
-
-		       "1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem"); // cacert + privkey
-
-        msg="{\"aps\":{\"alert\":\"nghttp2 test.\",\"sound\":\"default\"}}";
-    } else if (option_is_test(argc,argv[1])) {
-        test();
-        exit(0);
-    } else if (option_is_regular(argc, argv[1], argv[2], argv[3])) {
-        /* production */
-        uri = make_uri("api.push.apple.com", 2197, "/3/device/", argv[1], argv[2]);
-        msg = argv[3];
-    } else {
-        usage();
-        exit(0);
-    }
-#endif
 
     debug("apns2-test version: %s\n", APNS2_TEST_VERSION);
     debug("nghttp2 version: %s\n", NGHTTP2_VERSION);
