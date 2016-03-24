@@ -19,7 +19,7 @@
 
 #include <nghttp2/nghttp2.h>
 
-#define APNS2_TEST_VERSION "0.1.0"
+#define APNS2_TEST_VERSION "0.1.1"
 
 enum {
     IO_NONE,
