@@ -759,7 +759,7 @@ check_and_make_opt(int argc, const char *argv[], struct opt_t *opt)
   opt->pkey     = NULL;
   opt->prefix   = alloc_string("/3/device/");
   opt->message  = alloc_string("{\"aps\":{\"alert\":\"%s\",\"sound\":\"default\"}}");
-  opt->payload  = alloc_string("{\"aps\":{\"alert\":\"nghttp2 test.\",\"sound\":\"default\"}}");
+  opt->payload  = alloc_string("{\"aps\":{\"alert\":\"apns2 test.\",\"sound\":\"default\"}}");
 
   int i=0;
   for (i=0;i<argc;i++) {
