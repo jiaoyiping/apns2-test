@@ -29,7 +29,7 @@
   
   -debug            open verbose output for debugging
 
-  if your want to specify any:
+  rarely used:
   
   -uri              default: api.[development.]push.apple.com
   -port             default: 2197
