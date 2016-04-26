@@ -728,7 +728,7 @@ void
 usage()
 {
     printf("usage: apns2-test -cert -token [-dev] [-topic|-message|-payload|-uri|-port|-pkey|-prefix] [-debug]\n");
-    printf("\nExample:\n./apns2-test -cert 1fa5281c6c1d4cf5bb0bbbe0_dis_certkey.pem -token 73f98e1833fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
+    printf("\nExample:\n./apns2-test -cert cert.pem -token aabbccdd33fa744403fb4447e0f3a054d43f433b80e48c5bcaa62b501fd0f956\n");
 }
 
 static bool
