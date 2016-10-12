@@ -1,3 +1,4 @@
+##  在控制台中执行IOS的APNS推送的测试工具
 # apns2-test
 
 - deps on nghttp2(as submodule) and:
